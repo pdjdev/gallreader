@@ -55,11 +55,7 @@ def arrange(filename, savename):
         tmp.close()
     except:
         print('dup_list_nick.txt 불러오기 실패')
-       
 
-
-    print('글 집계중...')
-    sys.stdout.flush()
 
     # 고닉 다중이 id목록에서 이미 있던놈은 미리 지우기
     for ml in dup_list_id:
@@ -89,6 +85,8 @@ def arrange(filename, savename):
                 unickList.append(rmlist)
 
 
+    print('고닉 글 집계중...')
+    sys.stdout.flush()
 
     ################### 고닉 글 집계 ###################
             
@@ -123,7 +121,8 @@ def arrange(filename, savename):
         res = res.append(nd, ignore_index=True)
 
 
-
+    print('유동 글 집계중...')
+    sys.stdout.flush()
 
     ################### 유동 글 집계 ###################
         
@@ -186,7 +185,10 @@ def arrange(filename, savename):
             res = res.append(nd, ignore_index=True)
             udong = udong.drop(col.index)
             
-        
+ 
+    print('닉유동 글 집계중...')
+    sys.stdout.flush()
+
     # 닉네임이 ㅇㅇ가 아닌 유동닉글들 수집
     for nicks in unickList:
         col = udong[udong['Nickname'].isin(nicks.split('\t'))]
@@ -568,15 +570,27 @@ def main():
         print('  gallid', '갤러리 ID', sep='\t')
         print('  startnum', '글 ID 시작 번호', sep='\t')
         print('  endnum', '글 ID 끝 번호', sep='\t')
+        print('  startpage', '조회 시작 페이지 (페이지 모드시, 필수)', sep='\t')
+        print('  endpage', '조회 끝 페이지 (페이지 모드시, 필수)', sep='\t')
+        print('  starttime', '조회 시작 시간값 (UNIX)', sep='\t')
+        print('  endtime', '조회 끝 시간값 (UNIX)', sep='\t')
         print('  -r', '', '갤러리 글 조회 모드 (속도 느림, 정확함)', sep='\t')
+        print('  -ra', '', '글 조회 + 글 집계 모드 (기본값)', sep='\t')
         print('  -p', '', '갤러리 페이지 조회 모드 (속도 빠름, 부정확)', sep='\t')
+        print('  -pa', '', '페이지 조회 + 글 집계 모드', sep='\t')
         print('  -a', '', '조회 글 집계 모드\n', sep='\t')
+
     else:
         # 모드 선택
         # -a : arrange - 정렬 모드
         if (sys.argv[1] == "-a" or sys.argv[1] == "--a"):
             arrange(sys.argv[2], sys.argv[3])
             sys.exit()
+
+        # -ra : read arrange - 읽기 + 정렬
+        if (sys.argv[1] == "-ra" or sys.argv[1] == "--ra"):
+            gallreader(sys.argv[2], sys.argv[3], int(sys.argv[4]), int(sys.argv[5]))
+            arrange(sys.argv[2], sys.argv[2] + '-arranged')
 
         # -r : read - 읽기 모드
         if (sys.argv[1] == "-r" or sys.argv[1] == "--r"):
