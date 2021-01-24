@@ -12,13 +12,35 @@ def arrange(filename, savename):
     sys.stdout.flush()
     from pandas import DataFrame, read_csv, concat
 
+    if not ('.csv' in filename): filename += '.csv'
+
+
     # 통피 리스트
     SKTip = ['203.226', '211.234', '223.32', '223.33', '223.34', '223.35', '223.36', '223.37', '223.38', '223.39', '223.40','223.41', '223.42', '223.43', '223.44', '223.45', '223.46', '223.47', '223.48', '223.49', '223.50', '223.51', '223.52', '223.53', '223.54', '223.55', '223.56', '223.57', '223.58', '223.59', '223.60', '223.61', '223.62', '223.63']
     KTip = ['39.7', '110.70', '175.223', '175.252', '211.246', '118.235']
     LGTip = ['61.43', '211.234', '117.111', '211.36', '106.102']
 
     # 기존 CSV 불러옴
-    data = read_csv(filename + '.csv', dtype={'IPID':str})
+    data = read_csv(filename, dtype={'IPID':str})
+
+    if len(sys.argv) > 4 and (sys.argv[1] == "-a" or sys.argv[1] == "--a"):
+        print('2개 이상의 데이터가 발견되었습니다')
+        sys.stdout.flush()
+
+        savename = sys.argv[len(sys.argv) - 1]
+
+        for i in range(3, len(sys.argv) - 1):
+            print(i-1, '번째 파일 병합중...')
+            sys.stdout.flush()
+
+            fname = sys.argv[i]
+            if not ('.csv' in fname): fname += '.csv'
+            newd = read_csv(fname, dtype={'IPID':str})
+            data = concat([data, newd])
+            
+    
+    if not ('.csv' in savename): savename += '.csv'
+
     gonic = data[data['HasAccount']==1] # 고닉과
     udong = data[data['HasAccount']==0] # 유동글
 
@@ -55,11 +77,7 @@ def arrange(filename, savename):
         tmp.close()
     except:
         print('dup_list_nick.txt 불러오기 실패')
-       
 
-
-    print('글 집계중...')
-    sys.stdout.flush()
 
     # 고닉 다중이 id목록에서 이미 있던놈은 미리 지우기
     for ml in dup_list_id:
@@ -89,6 +107,8 @@ def arrange(filename, savename):
                 unickList.append(rmlist)
 
 
+    print('고닉 글 집계중...')
+    sys.stdout.flush()
 
     ################### 고닉 글 집계 ###################
             
@@ -123,7 +143,8 @@ def arrange(filename, savename):
         res = res.append(nd, ignore_index=True)
 
 
-
+    print('유동 글 집계중...')
+    sys.stdout.flush()
 
     ################### 유동 글 집계 ###################
         
@@ -186,7 +207,10 @@ def arrange(filename, savename):
             res = res.append(nd, ignore_index=True)
             udong = udong.drop(col.index)
             
-        
+ 
+    print('닉유동 글 집계중...')
+    sys.stdout.flush()
+
     # 닉네임이 ㅇㅇ가 아닌 유동닉글들 수집
     for nicks in unickList:
         col = udong[udong['Nickname'].isin(nicks.split('\t'))]
@@ -225,8 +249,8 @@ def arrange(filename, savename):
     res = res.sort_values(by='Posts', ascending=False)
 
     # 저장
-    res.to_csv(savename + '.csv', encoding='utf-8-sig', index=False)
-    print(savename + '.csv 로 저장되었습니다.')
+    res.to_csv(savename, encoding='utf-8-sig', index=False)
+    print(savename, '로 저장되었습니다.')
     sys.stdout.flush()
 
 
@@ -258,7 +282,7 @@ def gallreader(filename, gall, start, end):
         end = temp
   
     time.sleep(1)
-    f = open(filename + '.csv', 'w', encoding='utf-8-sig', newline='')
+    f = open(filename, 'w', encoding='utf-8-sig', newline='')
     wr = csv.writer(f)
 
     wr.writerow(['Post ID', 'Title', 'Nickname', 'IPID', 'Date', 'Views', 'Upvotes', 'GonicUpvotes', 'Downvotes', 'Comments', 'Recommended', 'Mobile', 'HasAccount', 'PostData'])
@@ -559,24 +583,39 @@ def gallreader_page(filename, gall, startpage, endpage, startdate=-1, enddate=-1
 # 코드 시작
 def main():
     if len(sys.argv) < 4:
-        print('Usage:\t', sys.argv[0], 'savename gallid startnum endnum')
-        print('\t', sys.argv[0], '-r savename gallid startnum endnum')
-        print('\t', sys.argv[0], '-p savename gallid startpage endpage starttime endtime autostop=True/False')
-        print('\t', sys.argv[0], '-a filename savename\n')
+        execname = sys.argv[0]
+        if execname.rfind('\\') != -1: execname = execname[execname.rfind('\\')+1:]
+
+        print('Usage:\t', execname, 'savename gallid startnum endnum')
+        print('\t', execname, '-r savename gallid startnum endnum')
+        print('\t', execname, '-p savename gallid startpage endpage starttime endtime autostop=True/False')
+        print('\t', execname, '-a filename savename\n')
 
         print('  savename', '저장 파일명', sep='\t')
         print('  gallid', '갤러리 ID', sep='\t')
         print('  startnum', '글 ID 시작 번호', sep='\t')
         print('  endnum', '글 ID 끝 번호', sep='\t')
+        print('  startpage', '조회 시작 페이지 (페이지 모드시, 필수)', sep='\t')
+        print('  endpage', '조회 끝 페이지 (페이지 모드시, 필수)', sep='\t')
+        print('  starttime', '조회 시작 시간값 (UNIX)', sep='\t')
+        print('  endtime', '조회 끝 시간값 (UNIX)', sep='\t')
         print('  -r', '', '갤러리 글 조회 모드 (속도 느림, 정확함)', sep='\t')
+        print('  -ra', '', '글 조회 + 글 집계 모드 (기본값)', sep='\t')
         print('  -p', '', '갤러리 페이지 조회 모드 (속도 빠름, 부정확)', sep='\t')
+        print('  -pa', '', '페이지 조회 + 글 집계 모드', sep='\t')
         print('  -a', '', '조회 글 집계 모드\n', sep='\t')
+
     else:
         # 모드 선택
         # -a : arrange - 정렬 모드
         if (sys.argv[1] == "-a" or sys.argv[1] == "--a"):
             arrange(sys.argv[2], sys.argv[3])
             sys.exit()
+
+        # -ra : read arrange - 읽기 + 정렬
+        if (sys.argv[1] == "-ra" or sys.argv[1] == "--ra"):
+            gallreader(sys.argv[2], sys.argv[3], int(sys.argv[4]), int(sys.argv[5]))
+            arrange(sys.argv[2], sys.argv[2] + '-arranged')
 
         # -r : read - 읽기 모드
         if (sys.argv[1] == "-r" or sys.argv[1] == "--r"):
