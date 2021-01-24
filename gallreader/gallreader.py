@@ -274,6 +274,8 @@ def midReturn(val, s, e):
 def gallreader(filename, gall, start, end):
     print('글 조회 작업 준비중...')
     sys.stdout.flush()
+
+    if not ('.csv' in filename): filename += '.csv'
     
     # 시작이 끝보다 크면 바꿔치기
     if (start > end):
@@ -394,6 +396,8 @@ def gallreader_page(filename, gall, startpage, endpage, startdate=-1, enddate=-1
     print('페이지 조회 작업 준비중...')
     sys.stdout.flush()
 
+    if not ('.csv' in filename): filename += '.csv'
+
     from datetime import datetime, timedelta
 
     prevcount = 0
@@ -414,7 +418,7 @@ def gallreader_page(filename, gall, startpage, endpage, startdate=-1, enddate=-1
     headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36' }
 
     drange = 0
-    f = open(filename + '.csv', 'w', encoding='utf-8-sig', newline='')
+    f = open(filename, 'w', encoding='utf-8-sig', newline='')
     wr = csv.writer(f)
 
     if startpage == 0: startpage = 1 # 0일경우 자동으로 1로 고쳐주기
