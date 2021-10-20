@@ -276,7 +276,7 @@ def gallreader(filename, gall, start, end):
         
     headers = { 'User-Agent': 'Mozilla/5.0 (Linux; Android 8.0; Pixel 2 Build/OPD3.170816.012) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.81 Mobile Safari/537.36' }
 
-    f = open(filename + '.csv', 'w', encoding='utf-8-sig', newline='')
+    f = open(filename, 'w', encoding='utf-8-sig', newline='')
     wr = csv.writer(f)
     timeout = 30
 
@@ -359,6 +359,15 @@ def gallreader(filename, gall, start, end):
         time.sleep(0.3)
         readtime = (time.time() - starttime)
 
+        if embedmode:
+            smsg = '<smsg><state>' + state + '</state>'
+            smsg += '<no>' + str(postid) + '</no>'
+            # smsg += '<total>' + (end - start + 1) + '</total>'
+            smsg += '<title>' + title.replace('\n','').replace('\r','') + '</title>'
+            smsg += '<readtime>' + str(round(1 / readtime, 2)) + '</readtime>'
+            smsg += '<lefttime>' + timetostring(round(readtime * (end - postid))) + '</lefttime></smsg>'     
+            print(smsg)
+
         print('['+state+'/'+str(postid)+']',
             (postid - start + 1) , '/' , (end - start + 1), '('+str(round((postid-start)/(end-start+1)*100))+'%)', '\t|\t' ,
             round(1 / readtime, 2) , '글/sec\t|\t',
@@ -367,7 +376,7 @@ def gallreader(filename, gall, start, end):
 
 
     f.close()
-    print(filename + '.csv 로 저장되었습니다.')
+    print(filename + '로 저장되었습니다.')
     sys.stdout.flush()
 
 def gallreader_page(filename, gall, startpage, endpage, startdate=-1, enddate=-1, autostop=True):
