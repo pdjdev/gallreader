@@ -1,7 +1,5 @@
-import re,requests,sys,time,html,random
+import requests,sys,time
 from bs4 import BeautifulSoup
-from base64 import b64encode
-from hashlib import sha256
 import csv
 
 embedmode = '-embed' in sys.argv
@@ -253,7 +251,6 @@ def arrange(filename, savename):
     print(savename, '로 저장되었습니다.')
     sys.stdout.flush()
 
-
 def timetostring(t):
     if (t <= 0): return '1초 미만'    
     s = ''; hour = 0; mini = 0    
@@ -276,121 +273,102 @@ def gallreader(filename, gall, start, end):
     sys.stdout.flush()
 
     if not ('.csv' in filename): filename += '.csv'
-    
-    # 시작이 끝보다 크면 바꿔치기
-    if (start > end):
-        temp = start
-        start = end
-        end = temp
-  
-    time.sleep(1)
-    f = open(filename, 'w', encoding='utf-8-sig', newline='')
+        
+    headers = { 'User-Agent': 'Mozilla/5.0 (Linux; Android 8.0; Pixel 2 Build/OPD3.170816.012) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.81 Mobile Safari/537.36' }
+
+    f = open(filename + '.csv', 'w', encoding='utf-8-sig', newline='')
     wr = csv.writer(f)
+    timeout = 30
 
     wr.writerow(['Post ID', 'Title', 'Nickname', 'IPID', 'Date', 'Views', 'Upvotes', 'GonicUpvotes', 'Downvotes', 'Comments', 'Recommended', 'Mobile', 'HasAccount', 'PostData'])
     # 글번호 제목 닉네임 IPID 날짜 조회수 추천수 고닉추 비추수 댓글수 념글여부 모바일여부 고닉여부 글내용
 
-    session = requests.Session()
-    while True:
-        try:
-            date = session.post('http://json2.dcinside.com/json0/app_check_A_rina.php').json()[0]['date']
-            value_token = sha256(('dcArdchk_%s' % date).encode('ascii')).hexdigest()
-            app_id = session.post('https://dcid.dcinside.com/join/mobile_app_key_verification_3rd.php',headers={'User-Agent': "dcinside.app"},
-                                  data={"value_token": value_token,"signature":'ReOo4u96nnv8Njd7707KpYiIVYQ3FlcKHDJE046Pg6s=','client_token':'a'*2000}).json()[0]['app_id'].encode('ascii')
-            app_id = app_id.decode('utf-8')
-            break
-        except:
-            for i in range(10):
-                print('오류 발생... ',(10-i),'초 뒤 다시 시도합니다     ')
-                sys.stdout.flush()
-                time.sleep(1)
-            print()
-
-    readtime = -1
-    timeout = 30    # 오류 발생 시 대기할 시간
-
-    print('글 조회 시작')
-    sys.stdout.flush()
-
-    for no in range(start, end+1):
+    for postid in range(start, end+1):
 
         starttime = time.time()
 
-        url = "http://m.dcinside.com/api/gall_view_new.php?id="+gall+"&no="+str(no)+"&app_id="+app_id
+        url = 'https://m.dcinside.com/board/' + gall + '/' + str(postid)
 
         while True:
             try:
-                a = session.get('http://m.dcinside.com/api/redirect.php?hash='+b64encode(url.encode('utf-8')).decode('utf-8'),headers={"User-Agent": "dcinside.app"},timeout=30)
+                r = requests.get(url, headers = headers).text
                 break
             except:
                 for i in range(timeout):
-                    print('오류 발생... ',(timeout-i),'초 뒤 다시 시도합니다     ')
+                    print('접속 오류 발생... ',(timeout-i),'초 뒤 다시 시도합니다     ')
                     sys.stdout.flush()
                     time.sleep(1)
                 print()
-
+        
         try:
-            if r'\uae00\uc5c6\uc74c' in a.text:
-                #print(no, '삭제/조회할 수 없는 글')
+            bs = BeautifulSoup(r, 'lxml')
+
+            if (bs.find('span', class_='tit') == None):
                 state = 'PASS'
             else:
-                isgonic = False
+                # 제목
+                title = list(filter(None, bs.find('span', class_='tit').text.split('\r\n')))[1].strip()
+                infos = bs.find_all('ul', class_='ginfo2')
+                p = bs.find('div', class_='gall-thum-btm')
 
-                intro = a.json(strict=False)[0]['view_info']
-                view = a.json(strict=False)[0]['view_main']
-                
-                if len(intro['ip'])==0:
-                    isgonic = True
-                    postIP = intro['user_id']
-                else: postIP = intro['ip'] # 작성자 IP
+                info1 = list(filter(None, infos[1].text.split('\n')))
+                views = int(info1[0].split(' ')[1])
+                comments = int(info1[2].split(' ')[1])
 
-                nick = intro['name'] # 작성자 닉네임
-                title = intro['subject'] # 작성글 제목
-                mobile = False if intro['write_type']=='W' else True # 모바일 체크
-                recom = False if intro['recommend_chk'] == 'N' else True # 개념글 체크
-                count = intro['hit'] #조회수
-                comment = intro['total_comment']
-                date_time = intro['date_time']
+                # 글내용
+                post = p.find('div', class_='thum-txtin')
+                # 스크립트와 각종 태그 제거
+                for script in post(["script", "style"]):
+                    script.extract() 
+                post = post.get_text().strip()
 
-                upvote_count = view['recommend']
-                upvote_nick_count = view['recommend_member']
-                downvote_count = view['nonrecommend']
 
-                postdata = BeautifulSoup(html.unescape(view['memo']), 'lxml').text # 글 내용
+                upvote = int(bs.find('span', class_='ct').text.strip())
+                gonicupvote = int(bs.find('span', class_='num').text.strip())
+                downvote = int(bs.find('span', class_='no-ct').text.strip())
 
-                # 번호, 닉네임, 제목, 댓글, 조회수, 추천수, 고닉추, 비추수, 모바일여부, 개념글여부, 글내용
+                # 갤로그 찾기
+                gallogbt = bs.find('a', class_='btn btn-line-gray')
+                info0 = list(filter(None, infos[0].text.split('\n')))
+                isrecom = (bs.find('button', class_='sp-icon sp-rega on') != None)
+                isgonic = not (gallogbt == None)
+                date_time = info0[1]
+
+                if isgonic:
+                    # 고닉일 시
+                    ipid = gallogbt['href'][gallogbt['href'].rfind('/')+1:]
+                    nick = info0[0]
+                else:
+                    # 유동일 시
+                    ipid = info0[0][info0[0].rfind('(')+1:info0[0].rfind(')')]
+                    nick = info0[0][:info0[0].rfind('(')]
+
+                # 모바일 여부
+                ismobile = (bs.find('span', class_='sp-icon sp-app') != None) or \
+                        (bs.find('span', class_='sp-icon sp-mweb') != None)
+
                 # 글번호 제목 닉네임 IPID 날짜 조회수 추천수 고닉추 비추수 댓글수 념글여부 모바일여부 고닉여부 글내용
-                wr.writerow([no, title, nick, postIP, date_time, count, upvote_count, upvote_nick_count, downvote_count, comment, recom, mobile, isgonic, postdata])
-                #print(no, '기록 성공')
+                wr.writerow([postid, title, nick, ipid, date_time, views, upvote, gonicupvote, downvote, comments, isrecom, ismobile, isgonic, post])
+
                 state = 'SAVE'
-
-            time.sleep(0.1)
-            readtime = (time.time() - starttime)
-
-            if embedmode:
-                smsg = '<smsg><state>' + state + '</state>'
-                smsg += '<no>' + str(no) + '</no>'
-                # smsg += '<total>' + (end - start + 1) + '</total>'
-                smsg += '<title>' + title + '</title>'
-                smsg += '<readtime>' + str(round(1 / readtime, 2)) + '</readtime>'
-                smsg += '<lefttime>' + timetostring(round(readtime * (end - no))) + '</lefttime></smsg>'     
-                print(smsg)
-                sys.stdout.flush()
-
-            print('['+state+'/'+str(no)+']',
-                    (no - start + 1) , '/' , (end - start + 1), '('+str(round((no-start)/(end-start+1)*100))+'%)', '\t' ,
-                    round(1 / readtime, 2) , '글/sec\t',
-                    timetostring(round(readtime * (end - no))), '남음')
-            sys.stdout.flush()   
 
         except:
             print('구문 분석/저장 오류')
             sys.stdout.flush()
 
+        time.sleep(0.3)
+        readtime = (time.time() - starttime)
+
+        print('['+state+'/'+str(postid)+']',
+            (postid - start + 1) , '/' , (end - start + 1), '('+str(round((postid-start)/(end-start+1)*100))+'%)', '\t|\t' ,
+            round(1 / readtime, 2) , '글/sec\t|\t',
+            timetostring(round(readtime * (end - postid))), '남음')
+        sys.stdout.flush()
+
+
     f.close()
     print(filename + '.csv 로 저장되었습니다.')
     sys.stdout.flush()
-
 
 def gallreader_page(filename, gall, startpage, endpage, startdate=-1, enddate=-1, autostop=True):
     print('페이지 조회 작업 준비중...')
@@ -402,9 +380,6 @@ def gallreader_page(filename, gall, startpage, endpage, startdate=-1, enddate=-1
 
     prevcount = 0
     readtime = -1
-    tasktime = 0
-
-    validdate = False
 
     if startdate > 0 and enddate > 0:
         startdate = datetime.fromtimestamp(startdate)
@@ -583,7 +558,6 @@ def gallreader_page(filename, gall, startpage, endpage, startdate=-1, enddate=-1
     sys.stdout.flush()
     pass
 
-
 # 코드 시작
 def main():
     if len(sys.argv) < 4:
@@ -649,8 +623,6 @@ def main():
         gallreader(filename, gall, start, end)
         arrange(filename, filename + '-arranged')
 
-
 if __name__ == '__main__':
     main()
-
 
