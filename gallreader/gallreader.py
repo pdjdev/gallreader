@@ -1,6 +1,6 @@
 import requests,sys,time
 from bs4 import BeautifulSoup
-import csv
+import csv, lxml
 
 embedmode = '-embed' in sys.argv
 
