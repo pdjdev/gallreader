@@ -2,6 +2,7 @@ import requests,sys,time
 from bs4 import BeautifulSoup
 import csv, lxml
 
+# gallreader-gui 용 명령행인자
 embedmode = '-embed' in sys.argv
 
 
@@ -12,14 +13,25 @@ def arrange(filename, savename):
 
     if not ('.csv' in filename): filename += '.csv'
 
-
     # 통피 리스트
-    SKTip = ['203.226', '211.234', '223.32', '223.33', '223.34', '223.35', '223.36', '223.37', '223.38', '223.39', '223.40','223.41', '223.42', '223.43', '223.44', '223.45', '223.46', '223.47', '223.48', '223.49', '223.50', '223.51', '223.52', '223.53', '223.54', '223.55', '223.56', '223.57', '223.58', '223.59', '223.60', '223.61', '223.62', '223.63', '27.160', '27.161', '27.162', '27.163', '27.164', '27.165', '27.166', '27.167', '27.168', '27.169', '27.170', '27.171', '27.172', '27.173', '27.174', '27.175', '27.176', '27.177', '27.178', '27.179', '27.180']
-    KTip = ['39.7', '110.70', '175.223', '175.252', '211.246', '118.235']
+    SKTip = ['203.226', '211.234', '223.32', '223.33', '223.34', '223.35', '223.36', '223.37', '223.38', '223.39', '223.40','223.41', '223.42', '223.43', '223.44', '223.45', '223.46', '223.47', '223.48', '223.49', '223.50', '223.51', '223.52', '223.53', '223.54', '223.55', '223.56', '223.57', '223.58', '223.59', '223.60', '223.61', '223.62', '223.63', '27.160', '27.161', '27.162', '27.163', '27.164', '27.165', '27.166', '27.167', '27.168', '27.169', '27.170', '27.171', '27.172', '27.173', '27.174', '27.175', '27.176', '27.177', '27.178', '27.179', '27.180', '27.181', '27.182', '27.183']
+    KTip = ['39.7', '110.70', '175.223', '211.246', '118.235', '110.70', '175.252', '175.253', '175.254', '175.255'] #'175.252'
     LGTip = ['61.43', '211.234', '117.111', '211.36', '106.101', '106.102']
 
     # 기존 CSV 불러옴
     data = read_csv(filename, dtype={'IPID':str})
+    cdata = DataFrame()
+
+    haspostdata = False
+    hascmtdata = False
+
+    # 처음 csv 데이터가 댓글 데이터인경우
+    if 'Cmt ID' in data:
+        cdata = read_csv(filename, dtype={'IPID':str})
+        data = DataFrame()
+        hascmtdata = True
+    else:
+        haspostdata = True
 
     if len(sys.argv) > 4 and (sys.argv[1] == "-a" or sys.argv[1] == "--a"):
         print('2개 이상의 데이터가 발견되었습니다')
@@ -34,20 +46,48 @@ def arrange(filename, savename):
             fname = sys.argv[i]
             if not ('.csv' in fname): fname += '.csv'
             newd = read_csv(fname, dtype={'IPID':str})
-            data = concat([data, newd])
+
+            if 'Cmt ID' in newd:
+                cdata = concat([cdata, newd])
+                if not hascmtdata: hascmtdata = True
+            else:
+                data = concat([data, newd])
+                if not haspostdata: haspostdata = True
             
-    
+
     if not ('.csv' in savename): savename += '.csv'
 
-    gonic = data[data['HasAccount']==1] # 고닉과
-    udong = data[data['HasAccount']==0] # 유동글
+    if haspostdata:
+        gonic = data[data['HasAccount']==1] # 고닉글과
+        udong = data[data['HasAccount']==0] # 유동글
+
+    if hascmtdata:
+        cgonic = cdata[cdata['HasAccount']==1] # 고닉댓과
+        cudong = cdata[cdata['HasAccount']==0] # 유동댓
 
     # 새로운 데이터 생성
     res = DataFrame(columns=['Nick', 'IPID', 'Posts', 'Upvotes', 'Downvotes', 'Comments', 'Views', 'HasAccount'])
 
-    idList = gonic.IPID.unique().tolist() # ID 값 모으기 (고닉)
-    ipList = udong.IPID.unique().tolist() # IP 값 모으기 (유동)
-    unickList = udong.Nickname.unique().tolist() # 유동닉 값 모으기 (유동)
+    idList = []; ipList = []; unickList = []
+
+    # 모으는 순서: 고닉ID -> 유동IP -> 유동닉
+    if haspostdata:
+        idList = gonic.IPID.unique().tolist()
+        ipList = udong.IPID.unique().tolist()
+        unickList = udong.Nickname.unique().tolist()
+
+    if hascmtdata:
+        for ipid in cgonic.IPID.unique().tolist():
+            if not ipid in idList:
+                idList.append(ipid)
+
+        for ipid in cudong.IPID.unique().tolist():
+            if not ipid in ipList:
+                ipList.append(ipid)
+
+        for unick in cudong.Nickname.unique().tolist():
+            if not unick in unickList:
+                unickList.append(unick)
 
     # 고닉 다중이 목록 불러오기
     dup_list_id = []
@@ -110,273 +150,218 @@ def arrange(filename, savename):
 
     ################### 고닉 글 집계 ###################
             
-    for ids in idList:    
-        col = gonic[gonic['IPID'].isin(ids.split('\t'))]
-        col2 = udong[udong['IPID'].isin(ids.split('\t'))] # 유동 아이피도 넣기
-        col = concat([col, col2])
+    for ids in idList:   
 
-        nicks = ' '.join(col.Nickname.unique().tolist())
-        ids2 = ' '.join(col.IPID.unique().tolist())
-        
-        counts = col.shape[0] # 글 수
-        upvotes = col.Upvotes.sum() # 추천수
-        
-        if 'Downvotes' in data.columns:
-            downvotes = col.Downvotes.sum() # 비추수
-        else:
-            downvotes = None
-        
-        if 'Comments' in data.columns:
-            comments = col.Comments.sum() # 받은댓글수
-        else:
-            comments = None
+        # 글 검색
+        col = DataFrame()
+        if haspostdata:
+            col = gonic[gonic['IPID'].isin(ids.split('\t'))]
+            col2 = udong[udong['IPID'].isin(ids.split('\t'))] # 유동 아이피도 넣기
+            col = concat([col, col2])
 
-        if 'Views' in data.columns: 
-            views = col.Views.sum() # 조회수
-        else:
-            views = None
+        if hascmtdata:        
+            # 댓글 검색
+            ccol = cgonic[cgonic['IPID'].isin(ids.split('\t'))]
+            ccol2 = cudong[cudong['IPID'].isin(ids.split('\t'))] # 유동 아이피도 넣기
+            ccol = concat([ccol, ccol2])
 
+        nicks = []; ids2 = []
+        if haspostdata:
+            nicks = col.Nickname.unique().tolist()
+            ids2 = col.IPID.unique().tolist()
+
+        if hascmtdata:
+            # 댓글 검색에서 나온 다중닉을 기존닉목록에 추가
+            for cn in ccol.Nickname.unique().tolist():
+                if not cn in nicks:
+                    nicks.append(cn)
+
+            # 댓글 검색에서 나온 다중ID(IP)를 기존ID(IP)목록에 추가
+            for cid in ccol.IPID.unique().tolist():
+                if not cid in ids2:
+                    ids2.append(cid)
+
+        nicks = ' '.join(nicks)
+        ids2 = ' '.join(ids2)
+        
+        if not haspostdata: counts = None
+        else: counts = col.shape[0] # 글 수
+
+        if 'Upvotes' in data.columns: upvotes = col.Upvotes.sum() # 추천수
+        else: upvotes = None
+        if 'Downvotes' in data.columns: downvotes = col.Downvotes.sum() # 비추수
+        else: downvotes = None
+        if 'Views' in data.columns: views = col.Views.sum() # 조회수
+        else: views = None
+        
+        if hascmtdata: comments = len(ccol) + len(ccol2) # 쓴댓글수
+        else: comments = None
             
         nd = {'Nick' : nicks, 'IPID' : ids2, 'Posts' : counts, 'Upvotes' : upvotes, 'Downvotes' : downvotes, 'Comments' : comments, 'Views' : views, 'HasAccount' : 1}
         res = res.append(nd, ignore_index=True)
+
+        if haspostdata: udong = udong.drop(col2.index) # 조건에 맞게 쓴 글들은 없애기 -> 또 세지 않도록 (이건 고닉의 집피유동 제거)
+        if hascmtdata: cudong = cudong.drop(ccol2.index)
 
 
     print('유동 글 집계중...')
     sys.stdout.flush()
 
     ################### 유동 글 집계 ###################
-        
+
+    teltype = 0
+
     # 닉네임이 ㅇㅇ이고 통피인놈들을 일단 묶어서 통계내기
-    for ips in [SKTip, KTip, LGTip]:   
-        col = udong[(udong['IPID'].isin(ips)) & (udong['Nickname']=='ㅇㅇ')]
-        if col.shape[0] > 0:
-            nicks = 'ㅇㅇ(통피)'
-            ids2 = ' '.join(col.IPID.unique().tolist())
-            counts = col.shape[0] # 글 수
-            upvotes = col.Upvotes.sum() # 추천수
+    for ips in [SKTip, KTip, LGTip]:
+        col = DataFrame()
+        if haspostdata: col = udong[(udong['IPID'].isin(ips)) & (udong['Nickname']=='ㅇㅇ')]
+        if hascmtdata: ccol = cudong[(cudong['IPID'].isin(ips)) & (cudong['Nickname']=='ㅇㅇ')]
 
-            if 'Downvotes' in data.columns:
-                downvotes = col.Downvotes.sum() # 비추수
-            else:
-                downvotes = None
+        #if col.shape[0] > 0:
+        nicks = 'ㅇㅇ'
+        if (teltype == 0):
+            nicks += '(SK통피)'
+        elif (teltype == 1):
+            nicks += '(KT통피)'
+        elif (teltype == 2):
+            nicks += '(U+통피)'
+        else:
+            nicks += '(기타통피)'
+        teltype += 1
+
+        if haspostdata: ids2 = col.IPID.unique().tolist()
+        else: ids2 = []
+
+        if hascmtdata:
+            # 댓글 검색에서 나온 통피IP를 기존IP목록에 추가
+            for cid in ccol.IPID.unique().tolist():
+                if not cid in ids2:
+                    ids2.append(cid)
+
+        ids2 = ' '.join(ids2)
+
+        if not haspostdata: counts = None
+        else: counts = col.shape[0] # 글 수
+
+        if 'Upvotes' in data.columns: upvotes = col.Upvotes.sum() # 추천수
+        else: upvotes = None
+        if 'Downvotes' in data.columns: downvotes = col.Downvotes.sum() # 비추수
+        else: downvotes = None
+        if 'Views' in data.columns: views = col.Views.sum() # 조회수
+        else: views = None
+
+        if hascmtdata: comments = len(ccol)
+        else: comments = None
             
-            if 'Comments' in data.columns:
-                comments = col.Comments.sum() # 받은댓글수
-            else:
-                comments = None
-
-            if 'Views' in data.columns: 
-                views = col.Views.sum() # 조회수
-            else:
-                views = None
-                
-            nd = {'Nick' : nicks, 'IPID' : ids2, 'Posts' : counts, 'Upvotes' : upvotes, 'Downvotes' : downvotes, 'Comments' : comments, 'Views' : views, 'HasAccount' : 0}
-            res = res.append(nd, ignore_index=True) 
-            udong = udong.drop(col.index) # 조건에 맞게 쓴 글들은 없애기 -> 또 세지 않도록
+        nd = {'Nick' : nicks, 'IPID' : ids2, 'Posts' : counts, 'Upvotes' : upvotes, 'Downvotes' : downvotes, 'Comments' : comments, 'Views' : views, 'HasAccount' : 0}
+        res = res.append(nd, ignore_index=True) 
+        if haspostdata: udong = udong.drop(col.index) # 조건에 맞게 쓴 글들은 없애기 -> 또 세지 않도록
+        if hascmtdata: cudong = cudong.drop(ccol.index)
 
     # ㅇㅇ(123.45), ㅇㅇ(56.789) -> 다른 놈으로 취급 (단, ip가 리스트에 있으면 같은놈)
     # 파이썬(123.45), 루비(123.45) -> 다른 놈으로 취급 (단, 닉네임이 리스트에 있으면 같은놈)
 
     # ip가 다른 ㅇㅇ닉글들 수집
     for ips in ipList:
-        col = udong[(udong['IPID'].isin(ips.split('\t'))) & (udong['Nickname']=='ㅇㅇ')]
-        if col.shape[0] > 0:
-            nicks = 'ㅇㅇ'
-            ids2 = ' '.join(col.IPID.unique().tolist())
-            counts = col.shape[0] # 글 수
-            upvotes = col.Upvotes.sum() # 추천수
-            
-            if 'Downvotes' in data.columns:
-                downvotes = col.Downvotes.sum() # 비추수
-            else:
-                downvotes = None
-            
-            if 'Comments' in data.columns:
-                comments = col.Comments.sum() # 받은댓글수
-            else:
-                comments = None
+        col = DataFrame()
+        if haspostdata: col = udong[(udong['IPID'].isin(ips.split('\t'))) & (udong['Nickname']=='ㅇㅇ')]
+        if hascmtdata: ccol = cudong[(cudong['IPID'].isin(ips.split('\t'))) & (cudong['Nickname']=='ㅇㅇ')]
+        #if col.shape[0] > 0:
+        nicks = 'ㅇㅇ'
 
-            if 'Views' in data.columns: 
-                views = col.Views.sum() # 조회수
-            else:
-                views = None
-                
-            nd = {'Nick' : nicks, 'IPID' : ids2, 'Posts' : counts, 'Upvotes' : upvotes, 'Downvotes' : downvotes, 'Comments' : comments, 'Views' : views, 'HasAccount' : 0}
-            res = res.append(nd, ignore_index=True)
-            udong = udong.drop(col.index)
-            
- 
+        if haspostdata: ids2 = col.IPID.unique().tolist()
+        else: ids2 = []
+
+        if hascmtdata:
+            # 댓글 검색에서 나온 통피IP를 기존IP목록에 추가
+            for cid in ccol.IPID.unique().tolist():
+                if not cid in ids2:
+                    ids2.append(cid)
+
+        ids2 = ' '.join(ids2)
+
+        if not haspostdata: counts = None
+        else: counts = col.shape[0] # 글 수
+        
+        if 'Upvotes' in data.columns: upvotes = col.Upvotes.sum() # 추천수
+        else: upvotes = None
+        if 'Downvotes' in data.columns: downvotes = col.Downvotes.sum() # 비추수
+        else: downvotes = None
+        if 'Views' in data.columns: views = col.Views.sum() # 조회수
+        else: views = None
+
+        if hascmtdata: comments = len(ccol)
+        else: comments = None
+        
+        nd = {'Nick' : nicks, 'IPID' : ids2, 'Posts' : counts, 'Upvotes' : upvotes, 'Downvotes' : downvotes, 'Comments' : comments, 'Views' : views, 'HasAccount' : 0}
+        res = res.append(nd, ignore_index=True)
+        if haspostdata: udong = udong.drop(col.index)
+        if hascmtdata: cudong = cudong.drop(ccol.index)
+
     print('닉유동 글 집계중...')
     sys.stdout.flush()
 
     # 닉네임이 ㅇㅇ가 아닌 유동닉글들 수집
     for nicks in unickList:
-        col = udong[udong['Nickname'].isin(nicks.split('\t'))]
-        if col.shape[0] > 0:
-            nicks = ' '.join(col.Nickname.unique().tolist())
-            ids2 = ' '.join(col.IPID.unique().tolist())
-            counts = col.shape[0] # 글 수
-            upvotes = col.Upvotes.sum() # 추천수
-            
-            if 'Downvotes' in data.columns:
-                downvotes = col.Downvotes.sum() # 비추수
-            else:
-                downvotes = None
-            
-            if 'Comments' in data.columns:
-                comments = col.Comments.sum() # 받은댓글수
-            else:
-                comments = None
+        col = DataFrame()
+        if haspostdata: col = udong[udong['Nickname'].isin(nicks.split('\t'))]
+        if hascmtdata: ccol = cudong[cudong['Nickname'].isin(nicks.split('\t'))]
+        #if col.shape[0] > 0:
+        ##nicks = ' '.join(col.Nickname.unique().tolist())
+        ##ids2 = ' '.join(col.IPID.unique().tolist())
+        nicks = []; ids2 = []
+        if haspostdata:
+            nicks = col.Nickname.unique().tolist()
+            ids2 = col.IPID.unique().tolist()
 
-            if 'Views' in data.columns: 
-                views = col.Views.sum() # 조회수
-            else:
-                views = None
-                
-            nd = {'Nick' : nicks, 'IPID' : ids2, 'Posts' : counts, 'Upvotes' : upvotes, 'Downvotes' : downvotes, 'Comments' : comments, 'Views' : views, 'HasAccount' : 0}
-            res = res.append(nd, ignore_index=True)
+        if hascmtdata:
+            # 댓글 검색에서 나온 다중닉을 기존닉목록에 추가
+            for cn in ccol.Nickname.unique().tolist():
+                if not cn in nicks:
+                    nicks.append(cn)
+
+            # 댓글 검색에서 나온 다중ID(IP)를 기존ID(IP)목록에 추가
+            for cid in ccol.IPID.unique().tolist():
+                if not cid in ids2:
+                    ids2.append(cid)
+
+        nicks = ' '.join(nicks)
+        ids2 = ' '.join(ids2)
+
+        if not haspostdata: counts = None
+        else: counts = col.shape[0] # 글 수
+        
+        if 'Upvotes' in data.columns: upvotes = col.Upvotes.sum() # 추천수
+        else: upvotes = None
+        if 'Downvotes' in data.columns: downvotes = col.Downvotes.sum() # 비추수
+        else: downvotes = None
+        if 'Views' in data.columns: views = col.Views.sum() # 조회수
+        else: views = None
+
+        if hascmtdata: comments = len(ccol)
+        else: comments = None
+            
+        nd = {'Nick' : nicks, 'IPID' : ids2, 'Posts' : counts, 'Upvotes' : upvotes, 'Downvotes' : downvotes, 'Comments' : comments, 'Views' : views, 'HasAccount' : 0}
+        if haspostdata: res = res.append(nd, ignore_index=True)
 
     print('작업 마무리중...')
     sys.stdout.flush()
 
     # 결측치 제거
     res = res.dropna(axis=1)
-    res = res[res['Posts']!=0]
+    res = res.dropna(axis=0)
+    #res = res[res['Posts']!=0]
+    res = res[res['IPID']!='']
 
-    # 정렬
-    res = res.sort_values(by='Posts', ascending=False)
+    # 정렬 (글싼순으로, 글이 없다면 댓글싼순)
+    if 'Posts' in res:
+        res = res.sort_values(by='Posts', ascending=False)
+    elif 'Comments' in res:
+        res = res.sort_values(by='Comments', ascending=False)
 
     # 저장
     res.to_csv(savename, encoding='utf-8-sig', index=False)
     print(savename, '로 저장되었습니다.')
-    sys.stdout.flush()
-
-def timetostring(t):
-    if (t <= 0): return '1초 미만'    
-    s = ''; hour = 0; mini = 0    
-    while(t >= 3600): t -= 3600; hour += 1
-    while(t >= 60): t -= 60; mini += 1
-    sec = t
-    if hour > 0: s += ' ' + str(hour) + '시간'
-    if mini > 0: s += ' ' + str(mini) + '분'
-    if sec > 0: s += ' ' + str(sec) + '초'
-    return s[1:]
-
-def midReturn(val, s, e):
-    if s in val:
-        val = val[val.find(s)+len(s):]
-        if e in val: val = val[:val.find(e)]
-    return val
-
-def gallreader(filename, gall, start, end):
-    print('글 조회 작업 준비중...')
-    sys.stdout.flush()
-
-    if not ('.csv' in filename): filename += '.csv'
-        
-    headers = { 'User-Agent': 'Mozilla/5.0 (Linux; Android 8.0; Pixel 2 Build/OPD3.170816.012) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.81 Mobile Safari/537.36' }
-
-    f = open(filename, 'w', encoding='utf-8-sig', newline='')
-    wr = csv.writer(f)
-    timeout = 30
-
-    wr.writerow(['Post ID', 'Title', 'Nickname', 'IPID', 'Date', 'Views', 'Upvotes', 'GonicUpvotes', 'Downvotes', 'Comments', 'Recommended', 'Mobile', 'HasAccount', 'PostData'])
-    # 글번호 제목 닉네임 IPID 날짜 조회수 추천수 고닉추 비추수 댓글수 념글여부 모바일여부 고닉여부 글내용
-
-    for postid in range(start, end+1):
-
-        starttime = time.time()
-
-        url = 'https://m.dcinside.com/board/' + gall + '/' + str(postid)
-
-        while True:
-            try:
-                r = requests.get(url, headers = headers).text
-                break
-            except:
-                for i in range(timeout):
-                    print('접속 오류 발생... ',(timeout-i),'초 뒤 다시 시도합니다     ')
-                    sys.stdout.flush()
-                    time.sleep(1)
-                print()
-        
-        try:
-            bs = BeautifulSoup(r, 'lxml')
-
-            if (bs.find('span', class_='tit') == None):
-                state = 'PASS'
-            else:
-                # 제목
-                title = list(filter(None, bs.find('span', class_='tit').text.split('\r\n')))[1].strip()
-                infos = bs.find_all('ul', class_='ginfo2')
-                p = bs.find('div', class_='gall-thum-btm')
-
-                info1 = list(filter(None, infos[1].text.split('\n')))
-                views = int(info1[0].split(' ')[1])
-                comments = int(info1[2].split(' ')[1])
-
-                # 글내용
-                post = p.find('div', class_='thum-txtin')
-                # 스크립트와 각종 태그 제거
-                for script in post(["script", "style"]):
-                    script.extract() 
-                post = post.get_text().strip()
-
-
-                upvote = int(bs.find('span', class_='ct').text.strip())
-                gonicupvote = int(bs.find('span', class_='num').text.strip())
-                downvote = int(bs.find('span', class_='no-ct').text.strip())
-
-                # 갤로그 찾기
-                gallogbt = bs.find('a', class_='btn btn-line-gray')
-                info0 = list(filter(None, infos[0].text.split('\n')))
-                isrecom = (bs.find('button', class_='sp-icon sp-rega on') != None)
-                isgonic = not (gallogbt == None)
-                date_time = info0[1]
-
-                if isgonic:
-                    # 고닉일 시
-                    ipid = gallogbt['href'][gallogbt['href'].rfind('/')+1:]
-                    nick = info0[0]
-                else:
-                    # 유동일 시
-                    ipid = info0[0][info0[0].rfind('(')+1:info0[0].rfind(')')]
-                    nick = info0[0][:info0[0].rfind('(')]
-
-                # 모바일 여부
-                ismobile = (bs.find('span', class_='sp-icon sp-app') != None) or \
-                        (bs.find('span', class_='sp-icon sp-mweb') != None)
-
-                # 글번호 제목 닉네임 IPID 날짜 조회수 추천수 고닉추 비추수 댓글수 념글여부 모바일여부 고닉여부 글내용
-                wr.writerow([postid, title, nick, ipid, date_time, views, upvote, gonicupvote, downvote, comments, isrecom, ismobile, isgonic, post])
-
-                state = 'SAVE'
-
-        except:
-            print('구문 분석/저장 오류')
-            sys.stdout.flush()
-
-        time.sleep(0.3)
-        readtime = (time.time() - starttime)
-
-        if embedmode:
-            smsg = '<smsg><state>' + state + '</state>'
-            smsg += '<no>' + str(postid) + '</no>'
-            # smsg += '<total>' + (end - start + 1) + '</total>'
-            smsg += '<title>' + title.replace('\n','').replace('\r','') + '</title>'
-            smsg += '<readtime>' + str(round(1 / readtime, 2)) + '</readtime>'
-            smsg += '<lefttime>' + timetostring(round(readtime * (end - postid))) + '</lefttime></smsg>'     
-            print(smsg)
-
-        print('['+state+'/'+str(postid)+']',
-            (postid - start + 1) , '/' , (end - start + 1), '('+str(round((postid-start)/(end-start+1)*100))+'%)', '\t|\t' ,
-            round(1 / readtime, 2) , '글/sec\t|\t',
-            timetostring(round(readtime * (end - postid))), '남음')
-        sys.stdout.flush()
-
-
-    f.close()
-    print(filename + '로 저장되었습니다.')
     sys.stdout.flush()
 
 def gallreader_page(filename, gall, startpage, endpage, startdate=-1, enddate=-1, autostop=True):
